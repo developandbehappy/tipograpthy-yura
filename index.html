@@ -1563,16 +1563,11 @@ function renderPrices(){
     if(typeof v==='number') walk({[k]:v}, [], 'Общее'); else walk(v, [k], k); }
 
   panel.innerHTML = `
-    <div class="panel-head"><div><h1>Редактор цен</h1><p>Изменения применяются сразу и сохраняются в браузере</p></div></div>
-    <hr class="divider">
     ${html}
     <div class="block-title">JSON цен</div>
     <textarea id="pr_json" style="width:100%;height:260px;font-family:monospace;font-size:12px;border:1.5px solid var(--line);border-radius:10px;padding:12px"></textarea>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
-      <button class="submit-btn" id="pr_show">Показать JSON</button>
-      <button class="submit-btn" id="pr_apply" style="background:var(--ink)">Применить JSON</button>
       <button class="submit-btn" id="pr_copy" style="background:var(--ink)">Копировать</button>
-      <button class="submit-btn" id="pr_reset" style="background:var(--warn)">Сбросить</button>
     </div>`;
   const ta = document.getElementById('pr_json');
   const show = ()=> ta.value = JSON.stringify(PRICES,null,2);
