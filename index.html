@@ -30,7 +30,7 @@ body{
 .nav-item:hover{background:var(--accent-soft);}
 .nav-item.active{background:var(--ink);color:#fff;font-weight:700;}
 .nav-item.active .dot{background:var(--accent);}
-.panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:30px 34px 38px;}
+.panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:30px 34px 38px;min-width:0;}
 .panel-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;margin-bottom:22px;}
 .panel-head h1{font-size:24px;margin:0;letter-spacing:-.01em;}
 .panel-head p{margin:4px 0 0;color:var(--muted);font-size:13.5px;}
@@ -68,8 +68,9 @@ select:focus,input:focus{border-color:var(--accent);background:#fff;}
 .switch-row .stxt{font-size:14.5px;font-weight:600;}
 .sub-options{display:none;margin:0 0 18px 54px;padding:14px 16px;background:var(--paper);border:1px dashed var(--line);border-radius:10px;}
 .sub-options.show{display:block;}
-.sub-options label{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:500;margin-bottom:9px;cursor:pointer;}
+.sub-options label{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:500;margin-bottom:9px;cursor:pointer;flex-wrap:wrap;}
 .sub-options label:last-child{margin-bottom:0;}
+.sub-options select{width:auto;padding:8px 10px;}
 .note{background:var(--accent-soft);border-radius:10px;padding:14px 16px;font-size:13.5px;color:#2d5c48;margin:10px 0 22px;}
 .note b{color:var(--ink);}
 .custom-dim{display:none;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;}
@@ -89,11 +90,16 @@ select:focus,input:focus{border-color:var(--accent);background:#fff;}
 .rline{display:flex;justify-content:space-between;gap:16px;padding:9px 0;font-size:14px;border-bottom:1px solid #f0efe8;}
 .rline:last-child{border-bottom:none;}
 .rline .v{font-weight:700;white-space:nowrap;}
+.rline.warn{color:#b3541e;font-weight:600;}
 .result-total{background:var(--accent-soft);padding:18px 22px;display:flex;justify-content:space-between;align-items:center;font-size:19px;font-weight:800;color:var(--accent-dark);}
 table.urg{width:100%;border-collapse:collapse;}
 table.urg th,table.urg td{text-align:left;padding:12px 10px;font-size:13.5px;border-bottom:1px solid #f0efe8;}
 table.urg th{color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.05em;}
 table.urg tr.pick td{font-weight:700;color:var(--accent-dark);background:var(--accent-soft);}
+table.offt{border-collapse:collapse;font-size:12px;}
+table.offt th,table.offt td{border:1px solid var(--line);padding:3px;text-align:center;}
+table.offt th{background:var(--paper);font-size:11px;}
+table.offt input{width:76px;padding:4px 6px;font-size:12px;border-radius:6px;}
 </style>
 </head>
 <body>
@@ -114,11 +120,18 @@ table.urg tr.pick td{font-weight:700;color:var(--accent-dark);background:var(--a
 
 <script>
 /* =====================================================================
-   ПРАЙС. Все цены и коэффициенты хранятся здесь (скидок нет).
-   sheetArea — площадь листа A3 (м²); цены бумаги заданы за лист A3.
+   ПРАЙС. Всё редактируется во вкладке «Цены».
+   null = данных нет (расчёт покажет «—» и сообщит, чего не хватает).
+
+   Метод расчёта (как в ваших записках):
+   • Лист A3 → сколько изделий помещается, сколько листов нужно.
+   • ≤ 100 листов A3 → цифровая печать (прайс цифры; бумага до 150 г включена,
+     для плотной/самоклейки — доплата за лист).
+   • > 100 листов → офсет: (листы + приладка) × цена бумаги за лист A3
+     + пластины (кол-во × цена) + работа по таблице офсетного прайса.
+   Пример проверки: 1000 A4 4+0 мел 115 = (500+150)×2,2 + 1200 + 1800 = 4430 ₽
    ===================================================================== */
 const PRICES = {
-  "sheetArea": 0.12474,
   "paper": {
     "Офисная (офсет) 80 г/кв.м": 1.7,
     "Офсетная 100 г/кв.м": 2.0,
@@ -142,27 +155,41 @@ const PRICES = {
     "Крафт-бумага 120 г/кв.м": 1.6,
     "Самоклеящаяся бумага": 16
   },
-  "color": {
-    "Без печати": 0,
-    "Черно-белая": 1,
-    "Черно-белая с одной стороны (1+0)": 1,
-    "Черно-белая с двух сторон (1+1)": 1.6,
-    "Цветная с одной стороны (4+0)": 2.4,
-    "Цветная с двух сторон (4+4)": 4,
-    "Цветная снаружи": 2.4,
-    "Цветная с двух сторон": 4
+  "digital": {
+    "maxSheets": 100,
+    "tiers": [
+      {"from":1,"to":1,"c40":150,"c44":250},
+      {"from":2,"to":9,"c40":80,"c44":104},
+      {"from":10,"to":49,"c40":60,"c44":90},
+      {"from":50,"to":100,"c40":50,"c44":70}
+    ],
+    "extra": {"g170_200":8,"g250_300":16,"selfAdhesive":16}
   },
-  "colorLists": {
-    "standard": ["Черно-белая с одной стороны (1+0)","Черно-белая с двух сторон (1+1)","Цветная с одной стороны (4+0)","Цветная с двух сторон (4+4)"],
-    "colorOnly": ["Цветная с одной стороны (4+0)","Цветная с двух сторон (4+4)"]
+  "offset": {
+    "plateA3": 300,
+    "plateA2": null,
+    "plates": {"4+0":4,"4+4_cs":4,"4+4_rk":8},
+    "waste": {"4+0":150,"4+4_cs":200,"4+4_rk":200},
+    "wasteA2": {"4+0":null,"4+4_cs":null,"4+4_rk":null}
   },
-  "paperLists": {
-    "calendarBlock": ["Бумага 115 г/кв.м","Бумага 130 г/кв.м","Бумага 150 г/кв.м","Бумага 170 г/кв.м","Бумага 200 г/кв.м"],
-    "posters": ["Бумага 115 г/кв.м","Бумага 130 г/кв.м","Бумага 150 г/кв.м","Бумага 170 г/кв.м","Бумага 200 г/кв.м","Глянцевая бумага 150 г/кв.м","Матовая бумага 150 г/кв.м","Мелованная бумага 250 г/кв.м"],
-    "cards": ["Картон односторонний 300 г/кв.м","Картон двусторонний 300 г/кв.м","Мелованная бумага 300 г/кв.м"],
-    "cardboard": ["Картон односторонний 300 г/кв.м","Картон двусторонний 300 г/кв.м"],
-    "deskBase": ["Картон односторонний 300 г/кв.м","Картон двусторонний 300 г/кв.м","Мелованная бумага 300 г/кв.м"],
-    "letterheads": ["Офисная (офсет) 80 г/кв.м","Офсетная 100 г/кв.м","Офсетная 120 г/кв.м","Офсетная 160 г/кв.м","Офсетная 190 г/кв.м"]
+  "layout": {"gap":0,"stickerGap":3},
+  "services": {
+    "fold":0.2,
+    "bigovka":0.5,
+    "staple":0.5,
+    "numbering":0.5,
+    "perforation":0.5,
+    "cornerRound":1,
+    "thermoBind_A5":40,
+    "quarterAssembly":160,
+    "calendarAssembly":100,
+    "plotterCutPerMeter":10,
+    "springA6":10,
+    "springA5":12,
+    "springA4":15,
+    "laminationA3PerSide":10,
+    "lamination125mkmPerSide":20,
+    "pikalo":0.8
   },
   "urgency": [
     {"name":"Стандарт","days":"3–5 дней","mult":1},
@@ -170,133 +197,12 @@ const PRICES = {
     {"name":"Экспресс","days":"в течение суток","mult":1.6},
     {"name":"Супер-срочно","days":"от 4 часов","mult":2.0}
   ],
-  "brochures": {
-    "bind": {"На скрепку":1,"На клей (КБС)":40,"На пружину":12},
-    "post": [
-      {"name":"Ламинация обложки глянец","price":10},
-      {"name":"Ламинация обложки матовая","price":10},
-      {"name":"Ламинация обложки софт тач","price":20},
-      {"name":"Биговка","price":0.5},
-      {"name":"Перфорация","price":0.5}
-    ]
-  },
-  "booklets": {
-    "fold": {"0":0,"2":0.4,"3":0.6,"4":0.8},
-    "post": [
-      {"name":"Ламинация глянец","price":10},
-      {"name":"Ламинация матовая","price":10},
-      {"name":"Ламинация софт тач","price":20},
-      {"name":"Биговка","price":0.5}
-    ]
-  },
-  "cards": {
-    "minPrint": 0.5,
-    "post": [
-      {"name":"Ламинация глянец","price":0.6},
-      {"name":"Ламинация матовая","price":0.7},
-      {"name":"Ламинация софт тач","price":0.9},
-      {"name":"Скругление углов","price":0.3}
-    ]
-  },
-  "books": {
-    "bind": {"Мягкий":40,"КБС":40,"На пружину":12},
-    "bodyColor": {"Черно-белая":1.4,"Цветная с двух сторон (4+4)":4},
-    "coverColor": {"Цветная снаружи":2.4,"Цветная с двух сторон":4},
-    "coverFinish": 10
-  },
-  "flyers": {
-    "minPrint": 0.3,
-    "post": [
-      {"name":"Ламинация глянец","price":10},
-      {"name":"Ламинация матовая","price":10},
-      {"name":"Ламинация софт тач","price":20}
-    ]
-  },
-  "posters": {
-    "post": [
-      {"name":"Ламинация","price":10},
-      {"name":"Ламинация софт тач","price":20},
-      {"name":"Люверсы (2 шт.)","price":20}
-    ]
-  },
-  "calendars": {
-    "flipBase": 100,
-    "deskBase": 100,
-    "flipPost": [
-      {"name":"Ламинация глянец","price":10},
-      {"name":"Ламинация матовая","price":10},
-      {"name":"Ламинация софт тач","price":20}
-    ],
-    "deskLam": [
-      {"name":"Ламинация глянец","price":10},
-      {"name":"Ламинация матовая","price":10},
-      {"name":"Ламинация софт тач","price":20}
-    ],
-    "quarterSize": {"Мини":0.6,"Миди":1,"Макси":1.6},
-    "quarterFieldFactor": 1,
-    "quarterBase": 160,
-    "pocketFormat": "90x50 мм",
-    "pocketMinPrint": 0.6,
-    "pocketRound": 1,
-    "pocketLam": [
-      {"name":"Ламинация глянец","price":0.6},
-      {"name":"Ламинация матовая","price":0.7},
-      {"name":"Ламинация софт тач","price":0.9}
-    ],
-    "pyramidFaceArea": 0.012,
-    "pyramidPrintFactor": 4,
-    "pyramidBase": 12,
-    "pyramidMount": {"Двусторонний скотч":2,"Вырубной замок":4}
-  },
-  "stickers": {
-    "colorMult": 2.4,
-    "minPrint": 0.2,
-    "shapeExtra": {"Прямоугольная":0,"Круглая":0.3,"Овальная":0.3,"Фигурная (по контуру)":0.8},
-    "lamination": 0.4
-  },
-  "notepads": {
-    "bind": {"Склейка (блок на клею)":10,"Пружина металлическая":12},
-    "sideSpringExtra": 2,
-    "color": {
-      "Без печати":0,
-      "1+0 (черно-белая, 1 сторона)":1,
-      "4+0 (цветная, 1 сторона)":2.4,
-      "1+1 (черно-белая, 2 стороны)":1.6,
-      "4+4 (цветная, 2 стороны)":4
-    },
-    "blockFactor": 0.5,
-    "coverFactor": 2
-  },
-  "letterheads": {
-    "minPrint": 0.3,
-    "numbering": 0.5
-  },
-  "services": {
-    "fold": 0.2,
-    "bigovka": 0.5,
-    "staple": 0.5,
-    "numbering": 0.5,
-    "perforation": 0.5,
-    "cornerRound": 1,
-    "thermoBind_A5_1000": 40,
-    "quarterAssembly": 160,
-    "plotterCutPerMeter": 10,
-    "calendarAssemblyNoBlocks": 100,
-    "springA6": 10,
-    "springA5": 12,
-    "springA4": 15,
-    "laminationA3PerSide": 10,
-    "lamination125mkmPerSide": 20,
-    "pikalo": 0.8
-  },
-  "digitalPosterA3": {
-    "paperUpTo150": [
-      {"from":1,"to":1,"c40":150,"c44":250},
-      {"from":2,"to":9,"c40":80,"c44":104},
-      {"from":10,"to":49,"c40":60,"c44":90},
-      {"from":50,"to":100,"c40":50,"c44":70}
-    ],
-    "extra": {"Мелованная 170–200 г":8,"Мелованная 250–300 г":16,"Самоклейка":16}
+  "paperLists": {
+    "calendarBlock": ["Бумага 115 г/кв.м","Бумага 130 г/кв.м","Бумага 150 г/кв.м","Бумага 170 г/кв.м","Бумага 200 г/кв.м"],
+    "posters": ["Бумага 115 г/кв.м","Бумага 130 г/кв.м","Бумага 150 г/кв.м","Бумага 170 г/кв.м","Бумага 200 г/кв.м","Глянцевая бумага 150 г/кв.м","Матовая бумага 150 г/кв.м","Мелованная бумага 250 г/кв.м"],
+    "cards": ["Картон односторонний 300 г/кв.м","Картон двусторонний 300 г/кв.м","Мелованная бумага 300 г/кв.м"],
+    "cardboard": ["Картон односторонний 300 г/кв.м","Картон двусторонний 300 г/кв.м"],
+    "letterheads": ["Офисная (офсет) 80 г/кв.м","Офсетная 100 г/кв.м","Офсетная 120 г/кв.м","Офсетная 160 г/кв.м","Офсетная 190 г/кв.м"]
   },
   "offsetTable": {
     "columns": ["A3_RA_4+0","A3_RA_4+4_cs","A3_RA_4+4_rk","A3_4+0","A3_4+4_cs","A3_4+4_rk","A2_4+0","A2_4+4_cs","A2_4+4_rk"],
@@ -314,7 +220,7 @@ const PRICES = {
       "5500":[4000,6600,7400,4700,7900,8600,7400,13400,14300],
       "6000":[4400,7300,8200,5100,8700,9500,8000,14300,15300],
       "6500":[4500,8000,8500,5400,9200,9900,8400,15300,16000],
-      "7000":[4900,8800,8800,5600,9700,10400,8700,16000,17000],
+      "7000":[4900,8300,8800,5600,9700,10400,8700,16000,17000],
       "7500":[5000,8800,9400,5800,10200,10900,9200,17000,17900],
       "8000":[5200,9200,9800,6000,10800,11500,9700,17600,18900],
       "8500":[5300,9700,10300,6300,11200,12100,10100,18900,19700],
@@ -335,22 +241,101 @@ const PRICES = {
   }
 };
 
-/* ===================== ФУНКЦИИ ===================== */
-const PAPER = () => PRICES.paper;
-const COLOR = () => PRICES.color;
+/* ===================== ЯРЛЫКИ ДЛЯ РЕДАКТОРА ===================== */
+const TITLES={paper:'Материалы — цена за лист A3, ₽',digital:'Цифровая печать A3 (₽ за лист)',offset:'Офсет: пластины и приладка',layout:'Раскладка на листе',services:'Услуги и постпечать',urgency:'Срочность (множитель)'};
+const LABELS={
+  maxSheets:'Цифра работает до N листов A3',extra:'Доплата за материал, ₽/лист',g170_200:'Мелованная/плотная 170–200 г',g250_300:'250–300 г (в т.ч. картон)',selfAdhesive:'Самоклейка',
+  plateA3:'Пластина A3, ₽/шт',plateA2:'Пластина A2, ₽/шт',plates:'Кол-во пластин на форму',waste:'Приладка A3, листов',wasteA2:'Приладка A2, листов',
+  '4+0':'4+0','4+4_cs':'4+4 с/с','4+4_rk':'4+4 р/к',gap:'Зазор между изделиями, мм',stickerGap:'Зазор для наклеек, мм',
+  fold:'Фальцовка, ₽/фальц',bigovka:'Биговка, ₽/биг',staple:'Скоба, ₽/шт',numbering:'Нумерация, ₽/номер',perforation:'Перфорация, ₽/линия',cornerRound:'Скругление углов, ₽/шт',
+  thermoBind_A5:'Термопереплёт A5, ₽/шт',quarterAssembly:'Сборка квартального календаря, ₽/шт',calendarAssembly:'Сборка календаря без блоков, ₽',plotterCutPerMeter:'Вырубка на плоттере, ₽/пог.м',
+  springA6:'Пружина A6, ₽/шт',springA5:'Пружина A5, ₽/шт',springA4:'Пружина A4, ₽/шт',laminationA3PerSide:'Ламинация A3 (до 75 мкм), ₽/сторона',lamination125mkmPerSide:'Ламинация 125 мкм, ₽/сторона',pikalo:'Пикало, ₽/шт'
+};
+
+/* ===================== БАЗОВЫЕ ФУНКЦИИ ===================== */
 const fmt  = n => n.toLocaleString('ru-RU',{maximumFractionDigits:0}) + ' ₽';
 const fmt2 = n => n.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' ₽';
 const $ = id => document.getElementById(id);
-/* Доля листа A3, занимаемая изделием заданной площади (м²) */
-const factor = area => area / PRICES.sheetArea;
+const S = () => PRICES.services;
 
 const SIZES = {
-  "A5 (148x210)":[148,210],"A4 (210x297)":[210,297],"A6 (105x148)":[105,148],"A3 (297x420)":[297,420],
-  "90x50 мм":[90,50],"85x55 мм":[85,55],"Евробуклет (99x210)":[297,210]
+  "A6 (105x148)":[105,148],"A5 (148x210)":[148,210],"A4 (210x297)":[210,297],"A3 (297x420)":[297,420],"A2 (420x594)":[420,594],
+  "90x50 мм":[90,50],"85x55 мм":[85,55],"Евробуклет (99x210)":[99,210]
 };
-function areaFromFormat(f, cw, ch){
-  const [w,h] = SIZES[f] || [cw||210, ch||297];
-  return (w*h)/1e6;
+const PRINT_TYPES = {
+  "4+0 — цветная, 1 сторона":"4+0",
+  "4+4 с/с — цветная, 2 стороны":"4+4_cs",
+  "4+4 р/к — цветная, 2 стороны":"4+4_rk"
+};
+const PT = Object.keys(PRINT_TYPES), PT0 = ['Без печати'].concat(PT);
+const ck = name => PRINT_TYPES[name];
+const allPapers = () => Object.keys(PRICES.paper);
+
+/* Сколько изделий w×h помещается на лист A3 (297×420) */
+function ups(w,h,gap){
+  gap = gap===undefined ? PRICES.layout.gap : gap;
+  w=(w||0)+gap; h=(h||0)+gap;
+  if(w<=gap||h<=gap) return 0;
+  return Math.max(Math.floor(297/w)*Math.floor(420/h), Math.floor(297/h)*Math.floor(420/w));
+}
+function paperExtra(name){
+  const E=PRICES.digital.extra;
+  if(/Самоклеящаяся/.test(name)) return E.selfAdhesive;
+  const g=parseInt((name.match(/(\d+)\s*г/)||[])[1])||0;
+  if(g>=250) return E.g250_300;
+  if(g>=170) return E.g170_200;
+  return 0;
+}
+function offsetWork(net,colorKey,ra,size){
+  const T=PRICES.offsetTable;
+  const keys=Object.keys(T.rows).map(Number).sort((a,b)=>a-b);
+  const key=keys.find(k=>k>=net);
+  if(key===undefined) return null;
+  const col = size==='A2' ? 'A2_'+colorKey : (ra?'A3_RA_':'A3_')+colorKey;
+  const i=T.columns.indexOf(col);
+  if(i<0) return null;
+  return {v:T.rows[key][i],key};
+}
+/* Печатная форма: net — чистое число листов A3 (без приладки).
+   Возвращает массив строк {label,t} (t — итог по заказу, null = нет данных) */
+function printJob(label,net,colorKey,paperName,ra,size){
+  net=Math.max(1,Math.ceil(net)); size=size||'A3';
+  const D=PRICES.digital,O=PRICES.offset,pp=PRICES.paper[paperName];
+  if(size==='A3' && net<=D.maxSheets){
+    const t=D.tiers.find(x=>net>=x.from&&net<=x.to);
+    const base=t?(colorKey==='4+0'?t.c40:t.c44):null, ex=paperExtra(paperName);
+    return [{label:`${label}: цифровая печать, ${net} л. A3 × ${base==null?'—':base}${ex?' + '+ex+' (материал)':''} ₽`,t:(base==null||ex==null)?null:(base+ex)*net}];
+  }
+  const k=size==='A2'?2:1;
+  const waste=size==='A2'?O.wasteA2[colorKey]:O.waste[colorKey];
+  const plate=size==='A2'?O.plateA2:O.plateA3;
+  const pl=O.plates[colorKey];
+  const w=offsetWork(net,colorKey,ra,size);
+  const rows=[
+    {label:`${label}: бумага ${net}+${waste==null?'—':waste} (приладка) л. ${size} × ${pp==null?'—':pp*k} ₽`,t:(pp==null||waste==null)?null:(net+waste)*pp*k},
+    {label:`${label}: пластины ${pl} × ${plate==null?'—':plate} ₽`,t:plate==null?null:pl*plate},
+    {label:`${label}: работа по прайсу (${size}${ra&&size==='A3'?', для Р/А':''}, ${colorKey}, ступень ${w?w.key:'—'} л.)`,t:w?w.v:null}
+  ];
+  if(net<500) rows.push({label:'⚠ Мало листов для офсета: действует минимальная ступень 500 л. Уточните цифровую печать для такого тиража.',info:true});
+  return rows;
+}
+function multRows(rows,m,suffix){
+  return rows.map(r=>r.info?r:{label:r.label+suffix,t:r.t==null?null:r.t*m});
+}
+function paperOnly(label,net,paperName,size){
+  const pp=PRICES.paper[paperName], k=size==='A2'?2:1;
+  return {label:`${label}: бумага ${net} л. × ${pp==null?'—':pp*k} ₽`,t:pp==null?null:Math.ceil(net)*pp*k};
+}
+/* Если «Без печати» — только бумага */
+function jobOrPaper(label,net,colorName,paperName,ra,size){
+  const key=ck(colorName);
+  return key ? printJob(label,net,key,paperName,ra,size) : [paperOnly(label,Math.ceil(net),paperName,size)];
+}
+function springPrice(fmtName){
+  if(/^A6/.test(fmtName)) return S().springA6;
+  if(/^A5/.test(fmtName)) return S().springA5;
+  if(/^A4/.test(fmtName)) return S().springA4;
+  return null;
 }
 
 /* ===================== UI-ХЕЛПЕРЫ ===================== */
@@ -368,40 +353,52 @@ function numField(id,label,val,extra=''){
   return `<div class="field"><label>${label}</label><input type="number" id="${id}" value="${val}" ${extra}></div>`;
 }
 function qtyField(id){
+  const p=id.replace(/_qty$/,'');
   return `<div class="field qty-box"><label>Тираж, шт.</label>
     <input type="number" id="${id}" min="1" placeholder="0" value="">
     <div class="qty-chips" id="${id}_presets">${[100,200,300,500,1000].map(v=>`<button type="button" data-val="${v}">${v}</button>`).join('')}</div>
+  </div>
+  <label class="switch-row"><input type="checkbox" id="${p}_ra"><span class="switch"></span><span class="stxt">Прайс «для Р/А» (рекламное агентство)</span></label>`;
+}
+const POST_DEF={
+  bigovka:{name:'Биговка',unit:'биг',count:true},
+  perforation:{name:'Перфорация',unit:'линия',count:true},
+  numbering:{name:'Нумерация',unit:'номер',count:true},
+  cornerRound:{name:'Скругление углов',unit:'шт',count:false}
+};
+function postBlock(p,keys){
+  return `<label class="switch-row"><input type="checkbox" id="${p}_chk"><span class="switch"></span><span class="stxt">Послепечатная обработка</span></label>
+  <div class="sub-options" id="${p}_box">
+    ${keys.map(k=>{const d=POST_DEF[k];return `<label><input type="checkbox" class="pt_${p}" data-key="${k}">${d.name} <span style="color:#8b8a7f">(${S()[k]} ₽/${d.unit})</span>${d.count?` × <input type="number" min="1" value="1" id="${p}_n_${k}" style="width:70px;padding:5px 8px">`:''}</label>`;}).join('')}
   </div>`;
 }
-function postTreatmentBlock(id,items){
-  return `<label class="switch-row"><input type="checkbox" id="${id}_chk"><span class="switch"></span><span class="stxt">Послепечатная обработка</span></label>
-  <div class="sub-options" id="${id}_box">
-    ${items.map(it=>`<label><input type="checkbox" class="pt_${id}" value="${it.price}" data-name="${it.name}">${it.name} <span style="color:#8b8a7f">(+${it.price} ₽/изд.)</span></label>`).join('')}
+function getPost(p,qty){
+  const rows=[], chk=$(p+'_chk');
+  if(!chk||!chk.checked) return rows;
+  document.querySelectorAll(`.pt_${p}:checked`).forEach(c=>{
+    const k=c.dataset.key,d=POST_DEF[k],pr=S()[k];
+    const n=d.count?(parseInt($(p+'_n_'+k).value)||1):1;
+    rows.push({label:`${d.name}${d.count?' × '+n:''}`,t:pr==null?null:pr*n*qty});
+  });
+  return rows;
+}
+function lamBlock(p,title){
+  return `<label class="switch-row"><input type="checkbox" id="${p}_lam_chk"><span class="switch"></span><span class="stxt">${title||'Ламинация'}</span></label>
+  <div class="sub-options" id="${p}_lam_box">
+    <label>Плёнка: <select id="${p}_lam_type"><option value="75">до 75 мкм (глянец/матовая) — ${S().laminationA3PerSide} ₽/A3 сторона</option><option value="125">125 мкм — ${S().lamination125mkmPerSide} ₽/A3 сторона</option></select></label>
+    <label>Сторон: <select id="${p}_lam_sides"><option value="1">1</option><option value="2">2</option></select></label>
   </div>`;
 }
-function laminationBlock(id,items){
-  return `<label class="switch-row"><input type="checkbox" id="${id}_lam_chk"><span class="switch"></span><span class="stxt">Ламинация</span></label>
-  <div class="sub-options" id="${id}_lam_box">
-    ${items.map((it,i)=>`<label><input type="radio" name="${id}_lam" value="${it.price}" data-name="${it.name}" ${i===0?'checked':''}>${it.name} <span style="color:#8b8a7f">(+${it.price} ₽/изд.)</span></label>`).join('')}
-  </div>`;
+/* u — сколько изделий на листе A3 (для A2 — 0.5) */
+function getLam(p,qty,u,title){
+  const chk=$(p+'_lam_chk'); if(!chk||!chk.checked) return null;
+  const type=$(p+'_lam_type').value, sides=parseInt($(p+'_lam_sides').value);
+  const rate=type==='125'?S().lamination125mkmPerSide:S().laminationA3PerSide;
+  return {label:`${title||'Ламинация'} ${type==='125'?'125 мкм':'до 75 мкм'}, ${sides} стор.`,t:(rate==null||!u)?null:rate*sides*qty/u};
 }
-function wireToggle(chkId, boxId){
-  const chk=$(chkId), box=$(boxId);
-  chk.addEventListener('change',()=>box.classList.toggle('show',chk.checked));
-}
-const wireLamination = id => wireToggle(id+'_lam_chk', id+'_lam_box');
-const wirePostTreatment = id => wireToggle(id+'_chk', id+'_box');
-function getLamination(id){
-  const chk=$(id+'_lam_chk');
-  if(!chk||!chk.checked) return {sum:0,name:''};
-  const r=document.querySelector(`input[name="${id}_lam"]:checked`);
-  return {sum:parseFloat(r.value),name:r.dataset.name};
-}
-function getPostTreatmentTotal(id){
-  let sum=0,names=[];
-  document.querySelectorAll(`.pt_${id}:checked`).forEach(c=>{sum+=parseFloat(c.value);names.push(c.dataset.name);});
-  return {sum,names};
-}
+function wireToggle(chkId,boxId){const chk=$(chkId),box=$(boxId);if(!chk)return;chk.addEventListener('change',()=>box.classList.toggle('show',chk.checked));}
+const wireLamination=p=>wireToggle(p+'_lam_chk',p+'_lam_box');
+const wirePostTreatment=p=>wireToggle(p+'_chk',p+'_box');
 function modeToggle(p){
   return `<div class="mode-toggle">
     <button type="button" class="active" id="${p}_seg_qty">По тиражам</button>
@@ -413,17 +410,17 @@ function wireChips(id){
     btn.classList.add('active');
   }));
 }
-function wireCards(id, onPick){
+function wireCards(id,onPick){
   document.querySelectorAll(`#${id} .type-card`).forEach(c=>c.addEventListener('click',()=>{
     document.querySelectorAll(`#${id} .type-card`).forEach(x=>x.classList.remove('active'));
     c.classList.add('active');
     if(onPick) onPick(c.dataset.val);
   }));
 }
-const getChipVal = id => { const el=document.querySelector(`#${id} .chip.active`); return el?el.dataset.val:null; };
-const getCardVal = id => document.querySelector(`#${id} .type-card.active`).dataset.val;
+const getChipVal=id=>{const el=document.querySelector(`#${id} .chip.active`);return el?el.dataset.val:null;};
+const getCardVal=id=>document.querySelector(`#${id} .type-card.active`).dataset.val;
 function wireQty(id){
-  const input=$(id), btns=document.querySelectorAll(`#${id}_presets button`);
+  const input=$(id),btns=document.querySelectorAll(`#${id}_presets button`);
   btns.forEach(btn=>btn.addEventListener('click',()=>{
     btns.forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
@@ -435,22 +432,19 @@ function typeCards(id,items,cols){
   return `<div class="type-cards" id="${id}" ${cols?`style="grid-template-columns:repeat(${cols},1fr)"`:''}>
     ${items.map((t,i)=>`<div class="type-card ${i===0?'active':''}" data-val="${t[1]}"><span class="ico">${t[0]}</span>${t[1]}</div>`).join('')}</div>`;
 }
-/* Площадь по чипам формата (с учётом «Свой размер») */
-function areaByChip(p,chipId){
-  const v=getChipVal(chipId);
-  return v==='Свой размер (мм)'
-    ? areaFromFormat(null,parseFloat($(p+'_w').value),parseFloat($(p+'_h').value))
-    : areaFromFormat(v);
-}
 function wireCustomDim(p){
   document.querySelectorAll(`#${p}_fmt .chip`).forEach(b=>b.addEventListener('click',()=>{
     $(p+'_custom').classList.toggle('show',b.dataset.val==='Свой размер (мм)');
   }));
 }
-const customDim = (p,w,h) => `<div class="custom-dim" id="${p}_custom">${numField(p+'_w','Ширина, мм',w)}${numField(p+'_h','Высота, мм',h)}</div>`;
+const customDim=(p,w,h)=>`<div class="custom-dim" id="${p}_custom">${numField(p+'_w','Ширина, мм',w)}${numField(p+'_h','Высота, мм',h)}</div>`;
+function dimsChip(p){
+  const v=getChipVal(p+'_fmt');
+  return v==='Свой размер (мм)'?[parseFloat($(p+'_w').value)||0,parseFloat($(p+'_h').value)||0]:SIZES[v];
+}
 
 /* ===================== ВКЛАДКИ ===================== */
-const TABS = [
+const TABS=[
   {id:'brochures',name:'Брошюры',icon:'📘',render:renderBrochures},
   {id:'booklets',name:'Буклеты',icon:'📑',render:renderBooklets},
   {id:'cards',name:'Визитки',icon:'🪪',render:renderCards},
@@ -463,7 +457,7 @@ const TABS = [
   {id:'letterheads',name:'Бланки',icon:'🧾',render:renderLetterheads},
   {id:'prices',name:'Цены',icon:'⚙️',render:renderPrices},
 ];
-const nav=$('nav'), panel=$('panel');
+const nav=$('nav'),panel=$('panel');
 TABS.forEach((t,i)=>{
   const btn=document.createElement('button');
   btn.className='nav-item'+(i===0?' active':'');
@@ -493,12 +487,12 @@ function panelShell(p,title,subtitle,inner){
     </div>
   </div>`;
 }
-function hideResults(p){ $(p+'_result').classList.remove('show'); $(p+'_result_urg').classList.remove('show'); }
-function output(p,mode,rows,total){
+function hideResults(p){$(p+'_result').classList.remove('show');$(p+'_result_urg').classList.remove('show');}
+function output(p,mode,rows,total,missing){
   hideResults(p);
-  if(mode==='qty'){
-    $(p+'_rows').innerHTML=rows.map(r=>`<div class="rline"><span>${r.label}</span><span class="v">${r.value}</span></div>`).join('');
-    $(p+'_total').textContent=fmt(total);
+  if(missing||mode==='qty'){
+    $(p+'_rows').innerHTML=rows.map(r=>`<div class="rline ${/^⚠/.test(r.label)?'warn':''}"><span>${r.label}</span><span class="v">${r.value}</span></div>`).join('');
+    $(p+'_total').textContent=missing?'—':fmt(total);
     $(p+'_result').classList.add('show');
   } else {
     $(p+'_urg_body').innerHTML=PRICES.urgency.map((l,i)=>`<tr class="${i===0?'pick':''}">
@@ -507,7 +501,7 @@ function output(p,mode,rows,total){
   }
 }
 function setupMode(p){
-  const state={mode:'qty'}, q=$(p+'_seg_qty'), u=$(p+'_seg_urg');
+  const state={mode:'qty'},q=$(p+'_seg_qty'),u=$(p+'_seg_urg');
   q.addEventListener('click',()=>{q.classList.add('active');u.classList.remove('active');state.mode='qty';hideResults(p);});
   u.addEventListener('click',()=>{u.classList.add('active');q.classList.remove('active');state.mode='urgency';hideResults(p);});
   return state;
@@ -517,245 +511,224 @@ function getQty(p){
   if(qty<=0){alert('Укажите тираж');return 0;}
   return qty;
 }
-/* Общая логика: build(qty) возвращает строки {label, v} — стоимость ЗА ШТУКУ.
-   Итог = сумма за штуку × тираж. Скидок нет. */
+/* build(qty, ra) → массив строк {label, t} — стоимость ЗА ВЕСЬ ТИРАЖ (t=null → нет данных) */
 function bindCalc(p,st,build,unitName){
   $(p+'_calc').addEventListener('click',()=>{
     const qty=getQty(p); if(!qty) return;
-    const rows=build(qty).filter(Boolean);
-    const unit=rows.reduce((s,r)=>s+r.v,0);
-    const total=unit*qty;
-    output(p,st.mode,rows.map(r=>({label:r.label,value:fmt(r.v*qty)})).concat([
-      {label:'Тираж',value:qty+' шт.'},
-      {label:unitName||'Цена за штуку',value:fmt2(unit)}
-    ]),total);
+    const ra=$(p+'_ra').checked;
+    const rows=build(qty,ra).flat(Infinity).filter(Boolean);
+    const bad=r=>!r.info&&(r.t==null||isNaN(r.t));
+    const view=rows.map(r=>({label:r.label,value:r.info?'':(bad(r)?'—':fmt(r.t))}));
+    if(rows.some(bad)){
+      view.push({label:'⚠ Не хватает данных в прайсе (строки «—»). Заполните их во вкладке «Цены».',value:''});
+      output(p,st.mode,view,0,true);return;
+    }
+    const total=rows.reduce((s,r)=>s+(r.t||0),0);
+    view.push({label:'Тираж',value:qty+' шт.'},{label:unitName||'Цена за штуку',value:fmt2(total/qty)});
+    output(p,st.mode,view,total,false);
   });
 }
-const evenPages = n => { n=parseInt(n)||4; return n+(n%2); };
 
-/* ===================== БРОШЮРЫ ===================== */
+/* ===================== БРОШЮРЫ И КНИГИ (общий расчёт) ===================== */
+/* Внутренний блок: формы по A3. На листе A3 помещается 2×ups страниц (с двух сторон).
+   Каждая форма печатается тиражом qty листов. Обложка — разворот (2 ширины). */
+function bookJob(o){
+  const g=PRICES.layout.gap,rows=[];
+  const pu=ups(o.w,o.h,g), cu=ups(o.w*2,o.h,g);
+  if(!pu||!cu) return [{label:'Формат не помещается на лист A3',t:null}];
+  const pps=2*pu, pages=Math.max(4,Math.ceil(o.pages/4)*4), forms=Math.ceil(pages/pps);
+  rows.push(...multRows(printJob(`Блок (${pages} стр.)`,o.qty,ck(o.inCol),o.inPaper,o.ra),forms,` — ${forms} форм(ы) по ${pps} стр.`));
+  rows.push(...printJob('Обложка',Math.ceil(o.qty/cu),ck(o.covCol),o.covPaper,o.ra));
+  const f=S().fold, q=o.qty;
+  if(o.bind==='staple'){
+    rows.push({label:`Сборка: фальцовка ${forms+1} × ${f} + пикало ${S().pikalo} ₽`,t:((forms+1)*f+S().pikalo)*q});
+  } else if(o.bind==='glue'){
+    const tb=/^A5/.test(o.fmtName)?S().thermoBind_A5:null;
+    rows.push({label:`Фальцовка тетрадей ${forms} × ${f} ₽`,t:forms*f*q});
+    rows.push({label:'Термопереплёт (цена задана для A5)',t:tb==null?null:tb*q});
+  } else {
+    const sp=springPrice(o.fmtName);
+    rows.push({label:'Пружина',t:sp==null?null:sp*q});
+  }
+  return rows.concat(o.extra||[]);
+}
+const bindCode=n=>/скреп/.test(n)?'staple':(/клей|КБС/.test(n)?'glue':'spring');
+
 function renderBrochures(){
-  const p='bro',C=PRICES.brochures;
-  panel.innerHTML=panelShell(p,'Брошюры','Многостраничные издания со скреплением',`
-    ${selectField(p+'_bind','Вид переплета (сборки)',Object.keys(C.bind),'На скрепку')}
-    ${chipGroup(p+'_fmt','Формат брошюры',['A5 (148x210)','A4 (210x297)','Свой размер (мм)'],'A5 (148x210)')}
+  const p='bro',BL=['На скрепку','На клей (КБС, термопереплёт)','На пружину'];
+  panel.innerHTML=panelShell(p,'Брошюры','Блок (по формам A3) + обложка + сборка',`
+    ${selectField(p+'_bind','Вид переплета (сборки)',BL,BL[0])}
+    ${chipGroup(p+'_fmt','Формат брошюры',['A6 (105x148)','A5 (148x210)','A4 (210x297)','Свой размер (мм)'],'A4 (210x297)')}
     ${customDim(p,148,210)}
     <div class="block-title">Внутренний блок</div>
     <div class="grid2">
-      ${numField(p+'_pages','Количество страниц',16,'min="4" step="4"')}
-      ${selectField(p+'_incolor','Печать (цветность)',PRICES.colorLists.standard,'Цветная с двух сторон (4+4)')}
+      ${numField(p+'_pages','Страниц блока (без обложки)',16,'min="4" step="4"')}
+      ${selectField(p+'_incolor','Печать',PT,PT[2])}
     </div>
-    ${selectField(p+'_inpaper','Материал',Object.keys(PRICES.paper),'Глянцевая бумага 130 г/кв.м')}
+    ${selectField(p+'_inpaper','Материал',allPapers(),'Бумага 130 г/кв.м')}
     <div class="block-title">Обложка</div>
     <div class="grid2">
-      ${selectField(p+'_covcolor','Печать (цветность)',PRICES.colorLists.standard,'Цветная с одной стороны (4+0)')}
-      ${selectField(p+'_covpaper','Материал',Object.keys(PRICES.paper),'Картон односторонний 300 г/кв.м')}
+      ${selectField(p+'_covcolor','Печать',PT,PT[2])}
+      ${selectField(p+'_covpaper','Материал',allPapers(),'Мелованная бумага 300 г/кв.м')}
     </div>
     ${qtyField(p+'_qty')}
-    ${postTreatmentBlock(p,C.post)}
+    ${lamBlock(p,'Ламинация обложки')}
+    ${postBlock(p,['bigovka','perforation','numbering'])}
   `);
-  wireChips(p+'_fmt');wireQty(p+'_qty');wirePostTreatment(p);wireCustomDim(p);
+  wireChips(p+'_fmt');wireQty(p+'_qty');wirePostTreatment(p);wireLamination(p);wireCustomDim(p);
   const st=setupMode(p);
-  bindCalc(p,st,()=>{
-    const pages=evenPages($(p+'_pages').value);
-    const sf=factor(areaByChip(p,p+'_fmt'));
-    const inner=(pages/2)*PAPER()[$(p+'_inpaper').value]*COLOR()[$(p+'_incolor').value]*sf;
-    const cover=PAPER()[$(p+'_covpaper').value]*COLOR()[$(p+'_covcolor').value]*sf;
-    const bind=C.bind[$(p+'_bind').value];
-    const pt=getPostTreatmentTotal(p);
-    return [
-      {label:`Внутренний блок (${pages} стр.)`,v:inner},
-      {label:'Обложка',v:cover},
-      {label:'Переплет/сборка',v:bind},
-      pt.sum&&{label:'Послепечатная обработка ('+pt.names.join(', ')+')',v:pt.sum}
-    ];
+  bindCalc(p,st,(qty,ra)=>{
+    const [w,h]=dimsChip(p), fmtName=getChipVal(p+'_fmt');
+    const cu=ups(w*2,h);
+    return bookJob({qty,ra,w,h,fmtName,pages:parseInt($(p+'_pages').value)||16,
+      inCol:$(p+'_incolor').value,inPaper:$(p+'_inpaper').value,covCol:$(p+'_covcolor').value,covPaper:$(p+'_covpaper').value,
+      bind:bindCode($(p+'_bind').value),
+      extra:[getLam(p,qty,cu,'Ламинация обложки'),...getPost(p,qty)]});
+  },'Цена за экземпляр');
+}
+
+function renderBooks(){
+  const p='bk',BL=['КБС (термопереплёт)','Пружина'];
+  panel.innerHTML=panelShell(p,'Книги','Блок + обложка + переплёт (расчёт как у брошюр)',`
+    <div class="grid2">
+      ${selectField(p+'_fmt','Формат книги',['A6 (105x148)','A5 (148x210)','A4 (210x297)'],'A5 (148x210)')}
+      ${selectField(p+'_bind','Вид переплета',BL,BL[0])}
+    </div>
+    <div class="block-title">Внутренний блок</div>
+    <div class="grid2">
+      ${numField(p+'_pages','Кол-во страниц',200,'min="4"')}
+      ${selectField(p+'_color','Печать',PT,PT[0])}
+    </div>
+    ${selectField(p+'_paper','Бумага',allPapers(),'Офисная (офсет) 80 г/кв.м')}
+    <div class="block-title">Обложка</div>
+    <div class="grid2">
+      ${selectField(p+'_covpaper','Бумага',allPapers(),'Мелованная бумага 250 г/кв.м')}
+      ${selectField(p+'_covcolor','Печать',PT,PT[0])}
+    </div>
+    ${qtyField(p+'_qty')}
+    ${lamBlock(p,'Ламинация обложки')}
+  `);
+  wireQty(p+'_qty');wireLamination(p);
+  const st=setupMode(p);
+  bindCalc(p,st,(qty,ra)=>{
+    const fmtName=$(p+'_fmt').value,[w,h]=SIZES[fmtName];
+    return bookJob({qty,ra,w,h,fmtName,pages:parseInt($(p+'_pages').value)||200,
+      inCol:$(p+'_color').value,inPaper:$(p+'_paper').value,covCol:$(p+'_covcolor').value,covPaper:$(p+'_covpaper').value,
+      bind:bindCode($(p+'_bind').value),extra:[getLam(p,qty,ups(w*2,h),'Ламинация обложки')]});
   },'Цена за экземпляр');
 }
 
 /* ===================== БУКЛЕТЫ ===================== */
+const FOLDS={'Евробуклет (2 сгиба)':2,'Одинарная (1 сгиб)':1,'Улитка, 2 сгиба':2,'Окошко, 2 сгиба':2,'Гармошка, 3 сгиба':3,'Гармошка, 4 сгиба':4};
 function renderBooklets(){
-  const p='bkl',C=PRICES.booklets;
-  panel.innerHTML=panelShell(p,'Буклеты','Листовая полиграфия со сгибами',`
-    ${selectField(p+'_color','Печать (цветность)',PRICES.colorLists.standard,'Цветная с двух сторон (4+4)')}
-    ${chipGroup(p+'_fmt','Размер буклета в готовом виде',['Евробуклет (99x210)','A5 (148x210)','A4 (210x297)','Свой размер (мм)'],'Евробуклет (99x210)')}
-    ${customDim(p,210,297)}
-    <div class="note" id="${p}_info">В сложенном виде: <b>99 × 210 мм</b><br>В развернутом виде: <b>297 × 210 мм</b></div>
-    ${selectField(p+'_paper','Материал',Object.keys(PRICES.paper),'Глянцевая бумага 130 г/кв.м')}
+  const p='bkl';
+  panel.innerHTML=panelShell(p,'Буклеты','Лист A3 → печать → фальцовка',`
+    ${selectField(p+'_color','Печать',PT.slice(1),PT[1])}
+    ${chipGroup(p+'_fmt','Размер буклета в сложенном виде',['Евробуклет (99x210)','A5 (148x210)','A4 (210x297)','Свой размер (мм)'],'Евробуклет (99x210)')}
+    ${customDim(p,99,210)}
+    <div class="note" id="${p}_info"></div>
+    ${selectField(p+'_paper','Материал',allPapers(),'Глянцевая бумага 130 г/кв.м')}
     ${qtyField(p+'_qty')}
     <div class="field"><label>Тип буклета</label>
-    ${typeCards(p+'_type',[['📨','Евробуклет (2 сгиба)'],['📃','Одинарная'],['🐌','Улитка, 2 сгиба'],['🪟','Окошко, 2 сгиба'],['🪗','Гармошка, 3 сгиба'],['🪗','Гармошка, 4 сгиба']])}
+    ${typeCards(p+'_type',[['📨','Евробуклет (2 сгиба)'],['📃','Одинарная (1 сгиб)'],['🐌','Улитка, 2 сгиба'],['🪟','Окошко, 2 сгиба'],['🪗','Гармошка, 3 сгиба'],['🪗','Гармошка, 4 сгиба']])}
     </div>
-    ${postTreatmentBlock(p,C.post)}
+    ${lamBlock(p)}
+    ${postBlock(p,['bigovka','perforation','numbering'])}
   `);
-  wireChips(p+'_fmt');wireQty(p+'_qty');wirePostTreatment(p);wireCards(p+'_type');
-  const infoMap={
-    'Евробуклет (99x210)':'В сложенном виде: <b>99 × 210 мм</b><br>В развернутом виде: <b>297 × 210 мм</b>',
-    'A5 (148x210)':'В сложенном виде: <b>148 × 210 мм</b><br>В развернутом виде: <b>210 × 297 мм</b>',
-    'A4 (210x297)':'В сложенном виде: <b>210 × 297 мм</b><br>В развернутом виде: <b>420 × 297 мм</b>'
-  };
-  document.querySelectorAll(`#${p}_fmt .chip`).forEach(b=>b.addEventListener('click',()=>{
-    const custom=b.dataset.val==='Свой размер (мм)';
-    if(!custom) $(p+'_info').innerHTML=infoMap[b.dataset.val];
-    $(p+'_custom').classList.toggle('show',custom);
-    $(p+'_info').style.display=custom?'none':'block';
-  }));
+  wireChips(p+'_fmt');wireQty(p+'_qty');wirePostTreatment(p);wireLamination(p);wireCustomDim(p);
+  const unfolded=()=>{const [w,h]=dimsChip(p),f=FOLDS[getCardVal(p+'_type')];return [w*(f+1),h,f];};
+  const upd=()=>{const [w,h]=dimsChip(p),[uw,uh]=unfolded();$(p+'_info').innerHTML=`В сложенном виде: <b>${w} × ${h} мм</b><br>В развернутом виде: <b>${uw} × ${uh} мм</b>`;};
+  wireCards(p+'_type',upd);
+  document.querySelectorAll(`#${p}_fmt .chip`).forEach(b=>b.addEventListener('click',upd));
+  [p+'_w',p+'_h'].forEach(i=>$(i).addEventListener('input',upd));
+  upd();
   const st=setupMode(p);
-  bindCalc(p,st,()=>{
-    // Площадь формата — это развёрнутый лист (для A5/A4 — удвоенная при сложении не учитывается: цена по заданному формату, как в прайсе)
-    const sf=factor(areaByChip(p,p+'_fmt'));
-    const print=PRICES.paper[$(p+'_paper').value]*COLOR()[$(p+'_color').value]*sf;
-    const typeVal=getCardVal(p+'_type');
-    const folds=typeVal.includes('4 сгиба')?'4':typeVal.includes('3 сгиба')?'3':typeVal.includes('2 сгиба')?'2':'0';
-    const pt=getPostTreatmentTotal(p);
+  bindCalc(p,st,(qty,ra)=>{
+    const [uw,uh,f]=unfolded(), u=ups(uw,uh);
+    if(!u) return [{label:'Развёрнутый буклет не помещается на лист A3',t:null}];
     return [
-      {label:'Печать',v:print},
-      {label:'Фальцовка ('+typeVal+')',v:C.fold[folds]},
-      pt.sum&&{label:'Отделка ('+pt.names.join(', ')+')',v:pt.sum}
+      ...printJob(`Печать (${uw}×${uh} мм, ${u} на лист A3)`,Math.ceil(qty/u),ck($(p+'_color').value),$(p+'_paper').value,ra),
+      {label:`Фальцовка ${f} × ${S().fold} ₽`,t:f*S().fold*qty},
+      getLam(p,qty,u),...getPost(p,qty)
     ];
   });
 }
 
 /* ===================== ВИЗИТКИ ===================== */
 function renderCards(){
-  const p='crd',C=PRICES.cards;
-  panel.innerHTML=panelShell(p,'Визитки','Плотный картон, быстрый тираж',`
+  const p='crd';
+  panel.innerHTML=panelShell(p,'Визитки','Печать на листе A3 с раскладкой',`
     <div class="grid2">
-      ${selectField(p+'_color','Печать (цветность)',PRICES.colorLists.standard,'Цветная с одной стороны (4+0)')}
+      ${selectField(p+'_color','Печать',PT,PT[0])}
       ${chipGroup(p+'_fmt','Формат визитки',['90x50 мм','85x55 мм'],'90x50 мм')}
     </div>
     ${selectField(p+'_paper','Материал',PRICES.paperLists.cards,'Картон односторонний 300 г/кв.м')}
     ${qtyField(p+'_qty')}
-    ${postTreatmentBlock(p,C.post)}
+    ${lamBlock(p)}
   `);
-  wireChips(p+'_fmt');wireQty(p+'_qty');wirePostTreatment(p);
+  wireChips(p+'_fmt');wireQty(p+'_qty');wireLamination(p);
   const st=setupMode(p);
-  bindCalc(p,st,()=>{
-    const sf=factor(areaFromFormat(getChipVal(p+'_fmt')));
-    const print=Math.max(PAPER()[$(p+'_paper').value]*COLOR()[$(p+'_color').value]*sf,C.minPrint);
-    const pt=getPostTreatmentTotal(p);
-    return [{label:'Печать',v:print},pt.sum&&{label:'Отделка ('+pt.names.join(', ')+')',v:pt.sum}];
+  bindCalc(p,st,(qty,ra)=>{
+    const [w,h]=SIZES[getChipVal(p+'_fmt')],u=ups(w,h);
+    return [...printJob(`Печать (${u} шт. на лист A3)`,Math.ceil(qty/u),ck($(p+'_color').value),$(p+'_paper').value,ra),getLam(p,qty,u)];
   },'Цена за визитку');
-}
-
-/* ===================== КНИГИ ===================== */
-function renderBooks(){
-  const p='bk',C=PRICES.books;
-  panel.innerHTML=panelShell(p,'Книги','Полный цикл: блок + переплёт',`
-    <div class="block-title">Основные параметры</div>
-    <div class="grid2">
-      ${selectField(p+'_fmt','Формат книги',['A5 (148x210)','A4 (210x297)','A6 (105x148)'],'A5 (148x210)')}
-      ${selectField(p+'_bind','Вид переплета (сборки)',Object.keys(C.bind),'Мягкий')}
-    </div>
-    <div class="block-title">Внутренний блок книги</div>
-    <div class="grid2">
-      ${numField(p+'_pages','Кол-во страниц',200,'min="2"')}
-      ${selectField(p+'_paper','Бумага',Object.keys(PRICES.paper).slice(0,9),'Офисная (офсет) 80 г/кв.м')}
-    </div>
-    ${selectField(p+'_color','Цветность печати',Object.keys(C.bodyColor),'Черно-белая')}
-    <div class="block-title">Обложка книги</div>
-    <div class="grid2">
-      ${selectField(p+'_covpaper','Бумага',['Мелованная бумага 200 г/кв.м','Мелованная бумага 250 г/кв.м','Картон односторонний 300 г/кв.м','Картон двусторонний 300 г/кв.м'],'Мелованная бумага 200 г/кв.м')}
-      ${selectField(p+'_covcolor','Цветность печати',Object.keys(C.coverColor),'Цветная снаружи')}
-    </div>
-    <label class="switch-row"><input type="checkbox" id="${p}_finish_chk"><span class="switch"></span><span class="stxt">Отделка обложки (ламинация)</span></label>
-    ${qtyField(p+'_qty')}
-  `);
-  wireQty(p+'_qty');
-  const st=setupMode(p);
-  bindCalc(p,st,()=>{
-    const pages=evenPages($(p+'_pages').value);
-    const sf=factor(areaFromFormat($(p+'_fmt').value));
-    const inner=(pages/2)*PAPER()[$(p+'_paper').value]*C.bodyColor[$(p+'_color').value]*sf;
-    const cover=PAPER()[$(p+'_covpaper').value]*C.coverColor[$(p+'_covcolor').value]*sf;
-    const bindName=$(p+'_bind').value;
-    const finish=$(p+'_finish_chk').checked?C.coverFinish:0;
-    return [
-      {label:`Внутренний блок (${pages} стр.)`,v:inner},
-      {label:'Обложка',v:cover},
-      {label:'Переплет ('+bindName+')',v:C.bind[bindName]},
-      finish&&{label:'Отделка обложки',v:finish}
-    ];
-  },'Цена за экземпляр');
 }
 
 /* ===================== ЛИСТОВКИ ===================== */
 function renderFlyers(){
-  const p='fly',C=PRICES.flyers;
-  panel.innerHTML=panelShell(p,'Листовки','Рекламная полиграфия большими тиражами',`
+  const p='fly';
+  panel.innerHTML=panelShell(p,'Листовки','Раскладка на A3, цифра/офсет по тиражу',`
     <div class="grid2">
       ${chipGroup(p+'_fmt','Формат листовки',['A6 (105x148)','A5 (148x210)','A4 (210x297)','Свой размер (мм)'],'A5 (148x210)')}
-      ${selectField(p+'_color','Печать (цветность)',PRICES.colorLists.standard,'Цветная с двух сторон (4+4)')}
+      ${selectField(p+'_color','Печать',PT,PT[1])}
     </div>
     ${customDim(p,210,297)}
-    ${selectField(p+'_paper','Материал',Object.keys(PRICES.paper),'Глянцевая бумага 130 г/кв.м')}
+    ${selectField(p+'_paper','Материал',allPapers(),'Глянцевая бумага 130 г/кв.м')}
     ${qtyField(p+'_qty')}
-    ${postTreatmentBlock(p,C.post)}
+    ${lamBlock(p)}
+    ${postBlock(p,['bigovka','perforation','numbering'])}
   `);
-  wireChips(p+'_fmt');wireQty(p+'_qty');wirePostTreatment(p);wireCustomDim(p);
+  wireChips(p+'_fmt');wireQty(p+'_qty');wirePostTreatment(p);wireLamination(p);wireCustomDim(p);
   const st=setupMode(p);
-  bindCalc(p,st,()=>{
-    const sf=factor(areaByChip(p,p+'_fmt'));
-    const print=Math.max(PAPER()[$(p+'_paper').value]*COLOR()[$(p+'_color').value]*sf,C.minPrint);
-    const pt=getPostTreatmentTotal(p);
-    return [{label:'Печать',v:print},pt.sum&&{label:'Отделка ('+pt.names.join(', ')+')',v:pt.sum}];
+  bindCalc(p,st,(qty,ra)=>{
+    const [w,h]=dimsChip(p),u=ups(w,h);
+    if(!u) return [{label:'Формат не помещается на лист A3',t:null}];
+    return [...printJob(`Печать (${u} шт. на лист A3)`,Math.ceil(qty/u),ck($(p+'_color').value),$(p+'_paper').value,ra),getLam(p,qty,u),...getPost(p,qty)];
   },'Цена за листовку');
 }
 
 /* ===================== ПЛАКАТЫ ===================== */
-function posterExtra(paperName){
-  const E=PRICES.digitalPosterA3.extra;
-  if(paperName.startsWith('Самоклеящаяся')) return E['Самоклейка'];
-  if(paperName.startsWith('Мелованная')){
-    const g=parseInt((paperName.match(/(\d+)\s*г/)||[])[1])||0;
-    if(g>=250) return E['Мелованная 250–300 г'];
-    if(g>=170) return E['Мелованная 170–200 г'];
-  }
-  return 0;
-}
-function posterTier(qty){
-  const T=PRICES.digitalPosterA3.paperUpTo150;
-  return T.find(t=>qty>=t.from&&qty<=t.to)||(qty<T[0].from?T[0]:T[T.length-1]);
-}
 function renderPosters(){
-  const p='pst',C=PRICES.posters;
-  panel.innerHTML=panelShell(p,'Плакаты','A3 — по прайсу цифровой печати, остальные форматы — по площади',`
+  const p='pst';
+  panel.innerHTML=panelShell(p,'Плакаты','A3 — цифра до 100 шт., далее офсет; A2 — офсет',`
     <div class="grid2">
       ${selectField(p+'_fmt','Формат плаката',['A3 (297x420)','A2 (420x594)','A1 (594x841)','A0 (841x1189)','Свой размер (мм)'],'A3 (297x420)')}
-      ${selectField(p+'_color','Печать (цветность)',PRICES.colorLists.colorOnly,'Цветная с одной стороны (4+0)')}
+      ${selectField(p+'_color','Печать',PT,PT[0])}
     </div>
-    ${customDim(p,500,700)}
+    ${customDim(p,297,420)}
     ${selectField(p+'_paper','Материал',PRICES.paperLists.posters,'Бумага 150 г/кв.м')}
     ${qtyField(p+'_qty')}
-    ${postTreatmentBlock(p,C.post)}
+    ${lamBlock(p)}
   `);
-  wireQty(p+'_qty');wirePostTreatment(p);
+  wireQty(p+'_qty');wireLamination(p);
   $(p+'_fmt').addEventListener('change',e=>$(p+'_custom').classList.toggle('show',e.target.value==='Свой размер (мм)'));
   const st=setupMode(p);
-  const sizes={'A3 (297x420)':[297,420],'A2 (420x594)':[420,594],'A1 (594x841)':[594,841],'A0 (841x1189)':[841,1189]};
-  bindCalc(p,st,qty=>{
-    const fmtVal=$(p+'_fmt').value, colorName=$(p+'_color').value, paperName=$(p+'_paper').value;
-    const is44=colorName.includes('4+4');
-    const pt=getPostTreatmentTotal(p);
-    let rows=[];
-    if(fmtVal==='A3 (297x420)'){
-      const t=posterTier(qty);
-      rows.push({label:`Печать A3 (${is44?'4+4':'4+0'}, ${t.from===t.to?t.from+' шт.':'от '+t.from+' до '+t.to}${qty>t.to?'+':''})`,v:is44?t.c44:t.c40});
-      const ex=posterExtra(paperName);
-      if(ex) rows.push({label:'Доплата за материал',v:ex});
-    } else {
-      let w,h;
-      if(sizes[fmtVal]) [w,h]=sizes[fmtVal];
-      else { w=parseFloat($(p+'_w').value)||500; h=parseFloat($(p+'_h').value)||700; }
-      rows.push({label:'Печать',v:PAPER()[paperName]*COLOR()[colorName]*factor(w*h/1e6)});
+  bindCalc(p,st,(qty,ra)=>{
+    const f=$(p+'_fmt').value,color=ck($(p+'_color').value),paper=$(p+'_paper').value;
+    if(f==='A2 (420x594)') return [...printJob('Печать A2',qty,color,paper,ra,'A2'),getLam(p,qty,0.5)];
+    if(f==='A3 (297x420)'||f==='Свой размер (мм)'){
+      let u=1;
+      if(f!=='A3 (297x420)') u=ups(parseFloat($(p+'_w').value),parseFloat($(p+'_h').value));
+      if(!u) return [{label:'Для размера больше A3 нет цены (широкоформатная печать)',t:null}];
+      return [...printJob('Печать',Math.ceil(qty/u),color,paper,ra),getLam(p,qty,u)];
     }
-    if(pt.sum) rows.push({label:'Отделка ('+pt.names.join(', ')+')',v:pt.sum});
-    return rows;
+    return [{label:`Печать ${f.split(' ')[0]} — нет цены (широкоформатная печать)`,t:null}];
   },'Цена за плакат');
 }
 
 /* ===================== КАЛЕНДАРИ ===================== */
 function renderCalendars(){
-  const p='cal',C=PRICES.calendars;
+  const p='cal',CF=['A5 (148x210)','A4 (210x297)','A3 (297x420)'];
   panel.innerHTML=panelShell(p,'Календари','Настенные, настольные, карманные',`
     <div class="field"><label>Тип календаря</label>
     ${typeCards(p+'_type',[['📅','Перекидной'],['🗓️','Квартальный'],['📆','Настольный'],['🧮','Карманный'],['🔺','Пирамидка']],5)}
@@ -764,190 +737,168 @@ function renderCalendars(){
     ${qtyField(p+'_qty')}
   `);
   wireQty(p+'_qty');
-  const dyn=$(p+'_dynamic'), CL=PRICES.colorLists.colorOnly;
-  const g=id=>$(p+id);
-  const sizes={'A5 (148x210)':[148,210],'A4 (210x297)':[210,297],'A3 (297x420)':[297,420]};
-
+  const box=$(p+'_dynamic'),g=id=>$(p+id);
   function renderDynamic(type){
     if(type==='Перекидной'||type==='Настольный'){
       const desk=type==='Настольный';
-      dyn.innerHTML=`
-        ${selectField(p+'_fmt','Формат',Object.keys(sizes),'A4 (210x297)')}
+      box.innerHTML=`
+        ${selectField(p+'_fmt','Формат',CF,'A4 (210x297)')}
         <div class="block-title">Блок</div>
         <div class="grid2">
-          ${numField(p+'_sheets','Количество листов',12,'min="1"')}
-          ${selectField(p+'_color','Печать блока (цветность)',CL,CL[0])}
+          ${numField(p+'_sheets','Количество листов (разных форм)',12,'min="1"')}
+          ${selectField(p+'_color','Печать блока',PT,PT[0])}
         </div>
         ${selectField(p+'_paper','Бумага блока',PRICES.paperLists.calendarBlock,'Бумага 170 г/кв.м')}
         <div class="block-title">Обложка</div>
         <div class="grid2">
-          ${selectField(p+'_covcolor','Печать обложки (цветность)',CL,CL[0])}
+          ${selectField(p+'_covcolor','Печать обложки',PT0,PT[0])}
           ${selectField(p+'_covpaper','Материал обложки',PRICES.paperLists.cardboard.concat(['Мелованная бумага 250 г/кв.м']),'Картон двусторонний 300 г/кв.м')}
         </div>
-        ${desk?`<div class="block-title">Основание</div>
-          ${selectField(p+'_basepaper','Материал основания',PRICES.paperLists.deskBase,'Картон двусторонний 300 г/кв.м')}
-          ${laminationBlock(p,C.deskLam)}`:postTreatmentBlock(p,C.flipPost)}`;
-      if(desk) wireLamination(p); else wirePostTreatment(p);
+        ${desk?`<div class="block-title">Основание</div>${selectField(p+'_basepaper','Материал основания',PRICES.paperLists.cards,'Картон двусторонний 300 г/кв.м')}`:''}
+        ${lamBlock(p,'Ламинация обложки')}
+        ${postBlock(p,['cornerRound'])}`;
     } else if(type==='Квартальный'){
-      dyn.innerHTML=`
-        ${selectField(p+'_size','Формат',Object.keys(C.quarterSize),'Миди')}
+      box.innerHTML=`
+        <div class="grid2">${numField(p+'_w','Ширина печатного поля, мм',297)}${numField(p+'_h','Высота печатного поля, мм',420)}</div>
         <div class="grid2">
-          ${numField(p+'_fields','Количество печатных полей',3,'min="1" max="6"')}
-          ${selectField(p+'_color','Печать (цветность)',CL,CL[0])}
+          ${numField(p+'_fields','Количество разных печатных полей',4,'min="1"')}
+          ${selectField(p+'_color','Печать',PT,PT[0])}
         </div>
-        ${selectField(p+'_paper','Бумага',['Мелованная бумага 200 г/кв.м','Мелованная бумага 250 г/кв.м','Картон односторонний 300 г/кв.м','Картон двусторонний 300 г/кв.м'],'Мелованная бумага 250 г/кв.м')}`;
+        ${selectField(p+'_paper','Бумага',allPapers(),'Мелованная бумага 250 г/кв.м')}`;
     } else if(type==='Карманный'){
-      dyn.innerHTML=`
-        ${selectField(p+'_color','Печать (цветность)',CL,CL[1])}
+      box.innerHTML=`
+        ${selectField(p+'_color','Печать',PT,PT[1])}
         ${selectField(p+'_paper','Материал',PRICES.paperLists.cardboard,'Картон односторонний 300 г/кв.м')}
-        <label class="switch-row"><input type="checkbox" id="${p}_round_chk"><span class="switch"></span><span class="stxt">Скругление углов</span></label>
-        ${laminationBlock(p,C.pocketLam)}`;
-      wireLamination(p);
+        ${lamBlock(p)}
+        ${postBlock(p,['cornerRound'])}`;
     } else {
-      dyn.innerHTML=`
-        ${selectField(p+'_color','Печать (цветность)',[CL[0]],CL[0])}
+      box.innerHTML=`
+        <div class="grid2">${numField(p+'_w','Ширина развёртки, мм',200)}${numField(p+'_h','Высота развёртки, мм',300)}</div>
+        ${selectField(p+'_color','Печать',PT,PT[0])}
         ${selectField(p+'_paper','Материал',PRICES.paperLists.cardboard,'Картон двусторонний 300 г/кв.м')}
-        <div class="grid2">
-          ${numField(p+'_faces','Количество граней (сменных вкладышей)',4,'min="3" max="6"')}
-          ${selectField(p+'_mount','Крепление',Object.keys(C.pyramidMount),'Двусторонний скотч')}
-        </div>`;
+        <label class="switch-row"><input type="checkbox" id="${p}_cut" checked><span class="switch"></span><span class="stxt">Вырубка на плоттере (по периметру развёртки)</span></label>`;
     }
+    wireLamination(p);wirePostTreatment(p);
   }
   renderDynamic('Перекидной');
   wireCards(p+'_type',t=>{renderDynamic(t);hideResults(p);});
   const st=setupMode(p);
-
-  bindCalc(p,st,()=>{
-    const type=getCardVal(p+'_type');
+  bindCalc(p,st,(qty,ra)=>{
+    const type=getCardVal(p+'_type'),rows=[];
     if(type==='Перекидной'||type==='Настольный'){
-      const desk=type==='Настольный';
-      const [w,h]=sizes[g('_fmt').value];
-      const sf=factor(w*h/1e6);
-      const sheets=parseInt(g('_sheets').value)||12;
-      const rows=[
-        {label:`Печать блока (${sheets} л.)`,v:sheets*PAPER()[g('_paper').value]*COLOR()[g('_color').value]*sf},
-        {label:'Обложка',v:PAPER()[g('_covpaper').value]*COLOR()[g('_covcolor').value]*sf},
-        {label:'Сборка/крепеж',v:desk?C.deskBase:C.flipBase}
-      ];
+      const desk=type==='Настольный',fm=g('_fmt').value,[w,h]=SIZES[fm],u=ups(w,h);
+      const sheets=parseInt(g('_sheets').value)||12,net=Math.ceil(qty/u);
+      rows.push(...multRows(printJob('Блок',net,ck(g('_color').value),g('_paper').value,ra),sheets,` — ${sheets} л.`));
+      rows.push(...jobOrPaper('Обложка',net,g('_covcolor').value,g('_covpaper').value,ra));
       if(desk){
-        rows.push({label:'Основание ('+g('_basepaper').value+')',v:PAPER()[g('_basepaper').value]*sf});
-        const lam=getLamination(p);
-        if(lam.sum) rows.push({label:lam.name,v:lam.sum});
-      } else {
-        const pt=getPostTreatmentTotal(p);
-        if(pt.sum) rows.push({label:'Отделка ('+pt.names.join(', ')+')',v:pt.sum});
+        rows.push(paperOnly('Основание',net,g('_basepaper').value));
+        rows.push({label:'Сборка календаря',t:S().calendarAssembly==null?null:S().calendarAssembly*qty});
       }
-      return rows;
+      const sp=springPrice(fm);
+      rows.push({label:`Пружина (${fm})`,t:sp==null?null:sp*qty});
+      rows.push(getLam(p,qty,u,'Ламинация обложки'),...getPost(p,qty));
+    } else if(type==='Квартальный'){
+      const u=ups(parseFloat(g('_w').value),parseFloat(g('_h').value)),fields=parseInt(g('_fields').value)||1;
+      if(!u) return [{label:'Поле не помещается на лист A3',t:null}];
+      rows.push(...multRows(printJob('Печатное поле',Math.ceil(qty/u),ck(g('_color').value),g('_paper').value,ra),fields,` — ${fields} поля`));
+      rows.push({label:'Сборка квартального календаря',t:S().quarterAssembly==null?null:S().quarterAssembly*qty});
+    } else if(type==='Карманный'){
+      const [w,h]=SIZES['90x50 мм'],u=ups(w,h);
+      rows.push(...printJob(`Печать (${u} шт. на лист A3)`,Math.ceil(qty/u),ck(g('_color').value),g('_paper').value,ra));
+      rows.push(getLam(p,qty,u),...getPost(p,qty));
+    } else {
+      const w=parseFloat(g('_w').value),h=parseFloat(g('_h').value),u=ups(w,h);
+      if(!u) return [{label:'Развёртка не помещается на лист A3',t:null}];
+      rows.push(...printJob(`Печать развёрток (${u} на лист A3)`,Math.ceil(qty/u),ck(g('_color').value),g('_paper').value,ra));
+      if(g('_cut').checked){const pr=S().plotterCutPerMeter;rows.push({label:'Вырубка на плоттере',t:pr==null?null:2*(w+h)/1000*pr*qty});}
     }
-    if(type==='Квартальный'){
-      const sm=C.quarterSize[g('_size').value];
-      const fields=parseInt(g('_fields').value)||3;
-      return [
-        {label:`Печать полей (${fields})`,v:fields*PAPER()[g('_paper').value]*COLOR()[g('_color').value]*C.quarterFieldFactor*sm},
-        {label:'Блок и крепление',v:C.quarterBase*sm}
-      ];
-    }
-    if(type==='Карманный'){
-      const sf=factor(areaFromFormat(C.pocketFormat));
-      const rows=[{label:'Печать',v:Math.max(PAPER()[g('_paper').value]*COLOR()[g('_color').value]*sf,C.pocketMinPrint)}];
-      if(g('_round_chk').checked) rows.push({label:'Скругление углов',v:C.pocketRound});
-      const lam=getLamination(p);
-      if(lam.sum) rows.push({label:lam.name,v:lam.sum});
-      return rows;
-    }
-    const faces=parseInt(g('_faces').value)||4;
-    const mountName=g('_mount').value;
-    return [
-      {label:`Печать граней (${faces})`,v:faces*PAPER()[g('_paper').value]*COLOR()[g('_color').value]*factor(C.pyramidFaceArea)*C.pyramidPrintFactor},
-      {label:'Основание/сборка',v:C.pyramidBase},
-      {label:'Крепление ('+mountName+')',v:C.pyramidMount[mountName]}
-    ];
+    return rows;
   });
 }
 
 /* ===================== НАКЛЕЙКИ ===================== */
 function renderStickers(){
-  const p='stk',C=PRICES.stickers;
-  panel.innerHTML=panelShell(p,'Наклейки','Самоклеящаяся продукция любой формы',`
+  const p='stk',SH=['Прямоугольная','Круглая','Овальная','Фигурная (по контуру)'];
+  panel.innerHTML=panelShell(p,'Наклейки','Самоклеящаяся бумага, раскладка на A3',`
     <div class="grid2">
-      ${selectField(p+'_shape','Форма наклейки',Object.keys(C.shapeExtra),'Прямоугольная')}
-      ${selectField(p+'_color','Печать (цветность)',['Цветная с одной стороны (4+0)'],'Цветная с одной стороны (4+0)')}
+      ${selectField(p+'_shape','Форма наклейки',SH,SH[0])}
+      ${selectField(p+'_color','Печать',PT,PT[0])}
     </div>
-    <div class="grid2">${numField(p+'_w','Ширина, мм',50,'min="1"')}${numField(p+'_h','Высота, мм',50,'min="1"')}</div>
-    ${selectField(p+'_paper','Материал',['Самоклеящаяся бумага'],'Самоклеящаяся бумага')}
+    <div class="grid2">${numField(p+'_w','Ширина (диаметр), мм',50,'min="1"')}${numField(p+'_h','Высота, мм',50,'min="1"')}</div>
     ${qtyField(p+'_qty')}
-    <label class="switch-row"><input type="checkbox" id="${p}_lam_chk"><span class="switch"></span><span class="stxt">Ламинация (защитный слой)</span></label>
+    <label class="switch-row"><input type="checkbox" id="${p}_cut" checked><span class="switch"></span><span class="stxt">Вырубка на плоттере (по контуру)</span></label>
+    ${lamBlock(p)}
   `);
-  wireQty(p+'_qty');
+  wireQty(p+'_qty');wireLamination(p);
   const st=setupMode(p);
-  bindCalc(p,st,()=>{
-    const w=parseFloat($(p+'_w').value)||50, h=parseFloat($(p+'_h').value)||50;
-    const print=Math.max(PAPER()[$(p+'_paper').value]*C.colorMult*factor(w*h/1e6),C.minPrint);
-    const shape=C.shapeExtra[$(p+'_shape').value];
-    const lam=$(p+'_lam_chk').checked?C.lamination:0;
-    return [{label:'Печать',v:print},shape&&{label:'Вырубка по форме',v:shape},lam&&{label:'Ламинация',v:lam}];
+  bindCalc(p,st,(qty,ra)=>{
+    const shape=$(p+'_shape').value,w=parseFloat($(p+'_w').value)||0;
+    const h=shape==='Круглая'?w:(parseFloat($(p+'_h').value)||0);
+    const u=ups(w,h,PRICES.layout.stickerGap);
+    if(!u) return [{label:'Наклейка не помещается на лист A3',t:null}];
+    const rows=[...printJob(`Печать (${u} шт. на лист A3)`,Math.ceil(qty/u),ck($(p+'_color').value),'Самоклеящаяся бумага',ra)];
+    if($(p+'_cut').checked){
+      const perim=shape==='Круглая'?Math.PI*w:shape==='Овальная'?Math.PI*(w+h)/2:2*(w+h);
+      const pr=S().plotterCutPerMeter;
+      rows.push({label:`Вырубка на плоттере (${(perim/1000).toFixed(2)} м на шт.)`,t:pr==null?null:perim/1000*pr*qty});
+    }
+    rows.push(getLam(p,qty,u));
+    return rows;
   });
 }
 
 /* ===================== БЛОКНОТЫ ===================== */
 function renderNotepads(){
-  const p='npd',C=PRICES.notepads;
-  panel.innerHTML=panelShell(p,'Блокноты','Блок на клею или пружине',`
+  const p='npd';
+  panel.innerHTML=panelShell(p,'Блокноты','Блок + обложка + подложка + пружина',`
     <div class="grid2">
       ${selectField(p+'_fmt','Формат блокнота',['A6 (105x148)','A5 (148x210)','A4 (210x297)'],'A5 (148x210)')}
-      ${selectField(p+'_bind','Тип крепления',Object.keys(C.bind),'Склейка (блок на клею)')}
+      ${selectField(p+'_bind','Крепление',['Пружина','Склейка (блок на клею)'],'Пружина')}
     </div>
-    <div class="field" id="${p}_orient_field"><label>Ориентация пружины</label>
-      <div class="chips" id="${p}_orient">
-        <button type="button" class="chip active" data-val="Сверху">Сверху</button>
-        <button type="button" class="chip" data-val="Сбоку">Сбоку</button>
-      </div></div>
     <div class="grid2">
-      ${numField(p+'_sheets','Кол-во листов',50,'min="1"')}
-      ${selectField(p+'_paper','Бумага блока',['Офисная (офсет) 80 г/кв.м','Офсетная 120 г/кв.м'],'Офисная (офсет) 80 г/кв.м')}
+      ${numField(p+'_sheets','Кол-во листов в блоке',50,'min="1"')}
+      ${selectField(p+'_paper','Бумага блока',PRICES.paperLists.letterheads,'Офисная (офсет) 80 г/кв.м')}
     </div>
-    ${selectField(p+'_color','Красочность печати блока',Object.keys(C.color),'1+0 (черно-белая, 1 сторона)')}
-    ${selectField(p+'_cover','Обложка',PRICES.paperLists.cardboard,'Картон двусторонний 300 г/кв.м')}
+    ${selectField(p+'_color','Печать блока (один макет на все листы)',PT0,'Без печати')}
+    <div class="grid2">
+      ${selectField(p+'_cover','Обложка (материал)',PRICES.paperLists.cardboard,'Картон двусторонний 300 г/кв.м')}
+      ${selectField(p+'_covcolor','Печать обложки',PT0,PT[0])}
+    </div>
     ${qtyField(p+'_qty')}
   `);
-  wireQty(p+'_qty');wireChips(p+'_orient');
-  const glueName='Склейка (блок на клею)';
-  const toggleOrient=()=>{$(p+'_orient_field').style.display=$(p+'_bind').value===glueName?'none':'block';};
-  $(p+'_bind').addEventListener('change',toggleOrient);toggleOrient();
+  wireQty(p+'_qty');
   const st=setupMode(p);
-  bindCalc(p,st,()=>{
-    const sf=factor(areaFromFormat($(p+'_fmt').value));
-    const sheets=parseInt($(p+'_sheets').value)||50;
-    const bindVal=$(p+'_bind').value;
-    const orient=bindVal!==glueName?getChipVal(p+'_orient'):null;
-    const orientExtra=orient==='Сбоку'?C.sideSpringExtra:0;
-    return [
-      {label:`Блок (${sheets} л., бумага+печать)`,v:sheets*PAPER()[$(p+'_paper').value]*C.color[$(p+'_color').value]*sf*C.blockFactor},
-      {label:'Обложка',v:PAPER()[$(p+'_cover').value]*sf*C.coverFactor},
-      {label:'Крепление ('+bindVal+(orient?', '+orient:'')+')',v:C.bind[bindVal]+orientExtra}
+  bindCalc(p,st,(qty,ra)=>{
+    const fmtName=$(p+'_fmt').value,[w,h]=SIZES[fmtName],u=ups(w,h);
+    const sheets=parseInt($(p+'_sheets').value)||50,netBlock=Math.ceil(qty*sheets/u),netCov=Math.ceil(qty/u);
+    const rows=[
+      ...jobOrPaper(`Блок (${sheets} л.)`,netBlock,$(p+'_color').value,$(p+'_paper').value,ra),
+      ...jobOrPaper('Обложка',netCov,$(p+'_covcolor').value,$(p+'_cover').value,ra),
+      paperOnly('Подложка',netCov,$(p+'_cover').value)
     ];
+    if($(p+'_bind').value==='Пружина'){const sp=springPrice(fmtName);rows.push({label:`Пружина (${fmtName})`,t:sp==null?null:sp*qty});}
+    else rows.push({label:'Склейка блока',t:null});
+    return rows;
   });
 }
 
 /* ===================== БЛАНКИ ===================== */
 function renderLetterheads(){
-  const p='ltr',C=PRICES.letterheads;
+  const p='ltr';
   panel.innerHTML=panelShell(p,'Бланки','Фирменные и типовые бланки',`
     <div class="grid2">
       ${selectField(p+'_fmt','Формат',['A4 (210x297)','A5 (148x210)'],'A4 (210x297)')}
-      ${selectField(p+'_color','Печать (цветность)',PRICES.colorLists.standard,'Цветная с одной стороны (4+0)')}
+      ${selectField(p+'_color','Печать',PT,PT[0])}
     </div>
     ${selectField(p+'_paper','Материал',PRICES.paperLists.letterheads,'Офисная (офсет) 80 г/кв.м')}
     ${qtyField(p+'_qty')}
-    <label class="switch-row"><input type="checkbox" id="${p}_num_chk"><span class="switch"></span><span class="stxt">Нумерация бланков</span></label>
+    ${postBlock(p,['numbering','perforation'])}
   `);
-  wireQty(p+'_qty');
+  wireQty(p+'_qty');wirePostTreatment(p);
   const st=setupMode(p);
-  bindCalc(p,st,()=>{
-    const sf=factor(areaFromFormat($(p+'_fmt').value));
-    const print=Math.max(PAPER()[$(p+'_paper').value]*COLOR()[$(p+'_color').value]*sf,C.minPrint);
-    const num=$(p+'_num_chk').checked?C.numbering:0;
-    return [{label:'Печать',v:print},num&&{label:'Нумерация',v:num}];
+  bindCalc(p,st,(qty,ra)=>{
+    const [w,h]=SIZES[$(p+'_fmt').value],u=ups(w,h);
+    return [...printJob(`Печать (${u} шт. на лист A3)`,Math.ceil(qty/u),ck($(p+'_color').value),$(p+'_paper').value,ra),...getPost(p,qty)];
   });
 }
 
@@ -958,45 +909,43 @@ function deepAssign(t,s){
     else t[k]=s[k];
   }
 }
-const savePrices=()=>localStorage.setItem('printcalc_prices_v2',JSON.stringify(PRICES));
-(function(){
-  try{ const s=localStorage.getItem('printcalc_prices_v2'); if(s) deepAssign(PRICES,JSON.parse(s)); }catch(e){}
-})();
+const LS_KEY='printcalc_prices_v3';
+const savePrices=()=>localStorage.setItem(LS_KEY,JSON.stringify(PRICES));
+(function(){try{const s=localStorage.getItem(LS_KEY);if(s)deepAssign(PRICES,JSON.parse(s));}catch(e){}})();
 
 function renderPrices(){
-  const skip=['colorLists','paperLists','offsetTable'];
+  const skip=['paperLists','offsetTable'];
   let html='';
+  const inp=(pp,v)=>`<input type="number" step="any" value="${v==null?'':v}" placeholder="—" data-path='${JSON.stringify(pp)}'>`;
   function walk(obj,path,title){
     const leaves=[];
     for(const k in obj){
-      const v=obj[k], pth=path.concat(k);
-      if(typeof v==='number') leaves.push([k,pth,v]);
+      const v=obj[k],pth=path.concat(k);
+      if(typeof v==='number'||v===null) leaves.push([LABELS[k]||k,pth,v]);
       else if(Array.isArray(v)){
         v.forEach((it,i)=>{
-          if(it&&typeof it==='object'){
-            for(const key in it){
-              if(typeof it[key]!=='number'||key==='from'||key==='to') continue;
-              const base=it.name||(it.from===it.to?it.from+' шт.':'от '+it.from+' до '+it.to+' шт.');
-              const suffix={price:'',mult:' (×)',c40:' — 4+0',c44:' — 4+4'}[key]??(' ('+key+')');
-              leaves.push([base+suffix,pth.concat(i,key),it[key]]);
-            }
+          if(it&&typeof it==='object') for(const key in it){
+            if(typeof it[key]!=='number'||key==='from'||key==='to') continue;
+            const base=it.name||(it.from===it.to?it.from+' шт.':'от '+it.from+' до '+it.to+' шт.');
+            const suffix={mult:' (×)',c40:' — 4+0',c44:' — 4+4'}[key]??(' ('+key+')');
+            leaves.push([base+suffix,pth.concat(i,key),it[key]]);
           }
         });
-      }
-      else if(v&&typeof v==='object') walk(v,pth,title+' / '+k);
+      } else if(v&&typeof v==='object') walk(v,pth,title+' / '+(LABELS[k]||k));
     }
     if(leaves.length) html+=`<div class="block-title">${title}</div><div class="grid2">`+
-      leaves.map(([n,pp,v])=>`<div class="field"><label>${n}</label><input type="number" step="any" value="${v}" data-path='${JSON.stringify(pp)}'></div>`).join('')+`</div>`;
+      leaves.map(([n,pp,v])=>`<div class="field"><label>${n}</label>${inp(pp,v)}</div>`).join('')+`</div>`;
   }
-  for(const k in PRICES){
-    if(skip.includes(k)) continue;
-    const v=PRICES[k];
-    if(typeof v==='number') walk({[k]:v},[],'Общее'); else walk(v,[k],k);
-  }
+  for(const k in PRICES){ if(skip.includes(k)) continue; walk(PRICES[k],[k],TITLES[k]||k); }
+  const T=PRICES.offsetTable;
+  const table=`<div class="block-title">Офсетный прайс — работа по листам A3/A2, ₽</div>
+    <div style="overflow-x:auto"><table class="offt"><thead><tr><th>Листов</th>${T.columns.map(c=>`<th>${c.replace('A3_RA_','A3 Р/А ').replace('A3_','A3 ').replace('A2_','A2 ').replace('_cs',' с/с').replace('_rk',' р/к')}</th>`).join('')}</tr></thead><tbody>
+    ${Object.keys(T.rows).map(r=>`<tr><th>${r}</th>${T.rows[r].map((v,i)=>`<td>${inp(['offsetTable','rows',r,i],v)}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div>`;
   panel.innerHTML=`
-    <div class="panel-head"><div><h1>Цены</h1><p>Изменения сохраняются в браузере автоматически</p></div></div>
+    <div class="panel-head"><div><h1>Цены</h1><p>Изменения сохраняются в браузере автоматически. Пустое поле = «нет данных» (в расчёте будет «—»)</p></div></div>
     <hr class="divider">
-    ${html}
+    ${html}${table}
     <div class="block-title">JSON цен</div>
     <textarea id="pr_json" style="width:100%;height:260px;font-family:monospace;font-size:12px;border:1.5px solid var(--line);border-radius:10px;padding:12px"></textarea>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
@@ -1007,20 +956,17 @@ function renderPrices(){
     </div>`;
   const ta=$('pr_json');
   const show=()=>{ta.value=JSON.stringify(PRICES,null,2);};
-  panel.querySelectorAll('input[data-path]').forEach(inp=>inp.addEventListener('input',()=>{
-    const path=JSON.parse(inp.dataset.path); let o=PRICES;
-    for(let i=0;i<path.length-1;i++) o=o[path[i]];
-    const val=parseFloat(inp.value); if(isNaN(val)) return;
-    o[path[path.length-1]]=val;
+  panel.querySelectorAll('input[data-path]').forEach(i=>i.addEventListener('input',()=>{
+    const path=JSON.parse(i.dataset.path);let o=PRICES;
+    for(let j=0;j<path.length-1;j++) o=o[path[j]];
+    if(i.value===''){o[path[path.length-1]]=null;}
+    else{const val=parseFloat(i.value);if(isNaN(val))return;o[path[path.length-1]]=val;}
     savePrices();show();
   }));
   $('pr_show').onclick=show;
-  $('pr_apply').onclick=()=>{
-    try{deepAssign(PRICES,JSON.parse(ta.value));savePrices();renderPrices();}
-    catch(e){alert('Ошибка JSON: '+e.message);}
-  };
+  $('pr_apply').onclick=()=>{try{deepAssign(PRICES,JSON.parse(ta.value));savePrices();renderPrices();}catch(e){alert('Ошибка JSON: '+e.message);}};
   $('pr_copy').onclick=()=>{show();navigator.clipboard.writeText(ta.value);};
-  $('pr_reset').onclick=()=>{if(confirm('Сбросить все цены к значениям по умолчанию?')){localStorage.removeItem('printcalc_prices_v2');location.reload();}};
+  $('pr_reset').onclick=()=>{if(confirm('Сбросить все цены к значениям по умолчанию?')){localStorage.removeItem(LS_KEY);location.reload();}};
   show();
 }
 
